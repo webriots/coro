@@ -74,6 +74,8 @@ func main() {
 }
 ```
 
+[Go Playground](https://go.dev/play/p/aPr9Xd9dwrw)
+
 ### Generator Example
 
 ```go
@@ -119,6 +121,8 @@ func main() {
 }
 ```
 
+[Go Playground](https://go.dev/play/p/VCv2Sp3ar9Z)
+
 ### Suspension Example
 
 ```go
@@ -160,6 +164,8 @@ func main() {
 	// Output: Value: "done", Running: false
 }
 ```
+
+[Go Playground](https://go.dev/play/p/yVUQyJpD3Wz)
 
 ### Cancellation
 
@@ -208,6 +214,8 @@ func main() {
 	}()
 }
 ```
+
+[Go Playground](https://go.dev/play/p/31pZ8Atq8GG)
 
 ## Detailed Usage
 
