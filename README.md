@@ -377,11 +377,6 @@ value, _ := resume(42) // value is of type string
 
 5. **Build higher-level abstractions** like generators, iterators, or state machines on top of the core coroutine functionality.
 
-## Notes
-
-- Always call `cancel()` when you're done with a coroutine to prevent resource leaks
-- Coroutines can propagate panics through the `resume` function
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
