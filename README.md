@@ -22,7 +22,7 @@ go get github.com/webriots/coro
 ```
 
 > [!IMPORTANT]
-> The `-ldflags=-checklinkname=0` flag is required when building and testing this library since it uses the `//go:linkname` directive to access internal Go runtime functions. As of Go 1.23, these accessing internal symbols requires this flag as an "escape hatch" to bypass the new [package handshake requirement](https://github.com/golang/go/issues/67401).
+> The `-ldflags=-checklinkname=0` flag is required when building and testing this library since it uses the `//go:linkname` directive to access internal Go runtime functions. As of Go 1.23, accessing internal symbols requires this flag as an "escape hatch" to bypass the new [package handshake requirement](https://github.com/golang/go/issues/67401).
 
 ## Requirements
 
