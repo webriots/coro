@@ -21,6 +21,9 @@ A Go implementation of coroutines that provides cooperative multitasking using G
 go get github.com/webriots/coro
 ```
 
+> [!IMPORTANT]
+> The `-ldflags=-checklinkname=0` flag is required when building and testing this library since it uses the `//go:linkname` directive to access internal Go runtime functions. As of Go 1.23, these accessing internal symbols requires this flag as an "escape hatch" to bypass the new [package handshake requirement](https://github.com/golang/go/issues/67401).
+
 ## Requirements
 
 - Go 1.23.1 or later
@@ -378,8 +381,6 @@ value, _ := resume(42) // value is of type string
 
 - Always call `cancel()` when you're done with a coroutine to prevent resource leaks
 - Coroutines can propagate panics through the `resume` function
-- Use the `-ldflags=-checklinkname=0` flag when running tests
-- Go's native coroutines are used via the `//go:linkname` directive
 
 ## Contributing
 
