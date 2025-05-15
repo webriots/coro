@@ -1,121 +1,192 @@
 package coro
 
 import (
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestCoroutineYield(t *testing.T) {
-	r := require.New(t)
-
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		input := yield("first")
-		r.Equal(1, input)
+		if input != 1 {
+			t.Errorf("Expected input to be 1, got %d", input)
+		}
 
 		input = yield("second")
-		r.Equal(2, input)
+		if input != 2 {
+			t.Errorf("Expected input to be 2, got %d", input)
+		}
 
 		return "done"
 	})
 	defer cancel()
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first" {
+		t.Errorf("Expected output to be 'first', got '%s'", out)
+	}
 
 	out, running = resume(1)
-	r.True(running)
-	r.Equal("second", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "second" {
+		t.Errorf("Expected output to be 'second', got '%s'", out)
+	}
 
 	out, running = resume(2)
-	r.False(running)
-	r.Equal("done", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "done" {
+		t.Errorf("Expected output to be 'done', got '%s'", out)
+	}
 
 	out, running = resume(3)
-	r.False(running)
-	r.Equal("", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 }
 
 func TestCoroutineSuspend(t *testing.T) {
-	r := require.New(t)
-
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		input := suspend()
-		r.Equal(1, input)
+		if input != 1 {
+			t.Errorf("Expected input to be 1, got %d", input)
+		}
 
 		input = yield("yielded")
-		r.Equal(2, input)
+		if input != 2 {
+			t.Errorf("Expected input to be 2, got %d", input)
+		}
 
 		return "done"
 	})
 	defer cancel()
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 
 	out, running = resume(1)
-	r.True(running)
-	r.Equal("yielded", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "yielded" {
+		t.Errorf("Expected output to be 'yielded', got '%s'", out)
+	}
 
 	out, running = resume(2)
-	r.False(running)
-	r.Equal("done", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "done" {
+		t.Errorf("Expected output to be 'done', got '%s'", out)
+	}
 
 	out, running = resume(3)
-	r.False(running)
-	r.Equal("", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 }
 
 func TestCoroutinePanicOnlyRecovery(t *testing.T) {
-	r := require.New(t)
-
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		panic("test panic")
 	})
 	defer cancel()
 
-	r.PanicsWithError("test panic", func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "test panic" {
+				t.Errorf("Expected panic message 'test panic', got '%s'", err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 }
 
 func TestCoroutinePanicRecovery(t *testing.T) {
-	r := require.New(t)
-
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
 		input := yield("first")
-		r.Equal(1, input)
+		if input != 1 {
+			t.Errorf("Expected input to be 1, got %d", input)
+		}
 		panic("test panic")
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first" {
+		t.Errorf("Expected output to be 'first', got '%s'", out)
+	}
 
-	r.PanicsWithError("test panic", func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "test panic" {
+				t.Errorf("Expected panic message 'test panic', got '%s'", err.Error())
+			}
+		}()
 		resume(1)
-	})
+	}()
 }
 
 func TestCoroutineCancel(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		defer func() {
 			returned = true
 			p := recover()
+			if p == nil {
+				t.Error("Expected panic but got none")
+			}
 			err, ok := p.(error)
-			r.NotNil(err)
-			r.True(ok)
-			r.ErrorIs(err, ErrCanceled)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", p)
+			}
+			if !errors.Is(err, ErrCanceled) {
+				t.Errorf("Expected error to be ErrCanceled, got '%v'", err)
+			}
 		}()
 
 		_ = yield("before cancel")
@@ -123,21 +194,40 @@ func TestCoroutineCancel(t *testing.T) {
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("before cancel", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "before cancel" {
+		t.Errorf("Expected output to be 'before cancel', got '%s'", out)
+	}
 
 	cancel()
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 }
 
 func TestCoroutinePanicInYield(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
 		defer func() { returned = true }()
@@ -146,54 +236,89 @@ func TestCoroutinePanicInYield(t *testing.T) {
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first yield", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first yield" {
+		t.Errorf("Expected output to be 'first yield', got '%s'", out)
+	}
 
-	r.PanicsWithError("panic after yield", func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "panic after yield" {
+				t.Errorf("Expected panic message 'panic after yield', got '%s'", err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 }
 
 func TestCoroutineResumeAfterCompletion(t *testing.T) {
-	r := require.New(t)
-
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
 		return "completed"
 	})
 
 	out, running := resume(0)
-	r.False(running)
-	r.Equal("completed", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "completed" {
+		t.Errorf("Expected output to be 'completed', got '%s'", out)
+	}
 
 	out, running = resume(0)
-	r.False(running)
-	r.Equal("", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 }
 
 func TestCoroutineMultipleCancels(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		defer func() {
 			returned = true
 			p := recover()
+			if p == nil {
+				t.Error("Expected panic but got none")
+			}
 			err, ok := p.(error)
-			r.NotNil(err)
-			r.True(ok)
-			r.ErrorIs(err, ErrCanceled)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", p)
+			}
+			if !errors.Is(err, ErrCanceled) {
+				t.Errorf("Expected error to be ErrCanceled, got '%v'", err)
+			}
 		}()
 
 		yield("before cancel")
-		r.Fail("coroutine should have been canceled")
+		t.Error("coroutine should have been canceled")
 		panic("should not reach here")
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("before cancel", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "before cancel" {
+		t.Errorf("Expected output to be 'before cancel', got '%s'", out)
+	}
 
 	cancel()
 	cancel()
@@ -201,8 +326,6 @@ func TestCoroutineMultipleCancels(t *testing.T) {
 }
 
 func TestCoroutineYieldEscaped(t *testing.T) {
-	r := require.New(t)
-
 	var yieldEscaped func(string) int
 
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
@@ -212,21 +335,40 @@ func TestCoroutineYieldEscaped(t *testing.T) {
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first yield", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first yield" {
+		t.Errorf("Expected output to be 'first yield', got '%s'", out)
+	}
 
 	out, running = resume(1)
-	r.False(running)
-	r.Equal("done", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "done" {
+		t.Errorf("Expected output to be 'done', got '%s'", out)
+	}
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		yieldEscaped("already done")
-	})
+	}()
 }
 
 func TestCoroutineSuspendEscaped(t *testing.T) {
-	r := require.New(t)
-
 	var suspendEscaped func() int
 
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
@@ -236,86 +378,174 @@ func TestCoroutineSuspendEscaped(t *testing.T) {
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first yield", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first yield" {
+		t.Errorf("Expected output to be 'first yield', got '%s'", out)
+	}
 
 	out, running = resume(1)
-	r.False(running)
-	r.Equal("done", out)
+	if running {
+		t.Error("Expected coroutine to be completed")
+	}
+	if out != "done" {
+		t.Errorf("Expected output to be 'done', got '%s'", out)
+	}
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		suspendEscaped()
-	})
+	}()
 }
 
 func TestCoroutineYieldEscapedCancel(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	var yieldEscaped func(string) int
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		defer func() { returned = true }()
 		yieldEscaped = yield
-		r.PanicsWithError(ErrCanceled.Error(), func() {
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Error("Expected panic but got none")
+				}
+				err, ok := r.(error)
+				if !ok {
+					t.Errorf("Expected error type from panic, got %T", r)
+				}
+				if err.Error() != ErrCanceled.Error() {
+					t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+				}
+			}()
 			yield("first yield")
-		})
+		}()
 		return "done"
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("first yield", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "first yield" {
+		t.Errorf("Expected output to be 'first yield', got '%s'", out)
+	}
 
 	cancel()
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		yieldEscaped("already done")
-	})
+	}()
 }
 
 func TestCoroutineSuspendEscapedCancel(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	var suspendEscaped func() int
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		defer func() { returned = true }()
 		suspendEscaped = suspend
-		r.Panics(func() { suspend() })
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Error("Expected panic but got none")
+				}
+			}()
+			suspend()
+		}()
 		return "done"
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 
 	cancel()
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		suspendEscaped()
-	})
+	}()
 }
 
 func TestCoroutineCancelWithPanic(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		defer func() {
 			returned = true
 			p := recover()
+			if p == nil {
+				t.Error("Expected panic but got none")
+			}
 			err, ok := p.(error)
-			r.NotNil(err)
-			r.True(ok)
-			r.ErrorIs(err, ErrCanceled)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", p)
+			}
+			if !errors.Is(err, ErrCanceled) {
+				t.Errorf("Expected error to be ErrCanceled, got '%v'", err)
+			}
 		}()
 
 		_ = suspend()
@@ -323,56 +553,110 @@ func TestCoroutineCancelWithPanic(t *testing.T) {
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "" {
+		t.Errorf("Expected output to be empty, got '%s'", out)
+	}
 
 	cancel()
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 
 	cancel()
 }
 
 func TestResumeAfterCoroutinePanic(t *testing.T) {
-	r := require.New(t)
-
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		panic("test panic")
 	})
 
-	r.PanicsWithError("test panic", func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "test panic" {
+				t.Errorf("Expected panic message 'test panic', got '%s'", err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 
-	r.PanicsWithError("test panic", func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "test panic" {
+				t.Errorf("Expected panic message 'test panic', got '%s'", err.Error())
+			}
+		}()
 		resume(1)
-	})
+	}()
 
 	cancel()
 }
 
 func TestCoroutineCancelBeforeResume(t *testing.T) {
-	r := require.New(t)
-
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
-		r.Fail("coroutine should not start")
+		t.Error("coroutine should not start")
 		panic("should not reach here")
 	})
 
 	cancel()
 
-	r.PanicsWithError(ErrCanceled.Error(), func() {
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != ErrCanceled.Error() {
+				t.Errorf("Expected panic message '%s', got '%s'", ErrCanceled.Error(), err.Error())
+			}
+		}()
 		resume(0)
-	})
+	}()
 }
 
 func TestCancelDuringCoroutinePanic(t *testing.T) {
-	r := require.New(t)
-
 	returned := false
-	defer func() { r.True(returned) }()
+	defer func() {
+		if !returned {
+			t.Error("Expected returned to be true")
+		}
+	}()
 
 	resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 		// Simulate the coro recovering a panic and then panic'ing again.
@@ -380,20 +664,45 @@ func TestCancelDuringCoroutinePanic(t *testing.T) {
 			returned = true
 			panic("deferred error")
 		}()
-		r.Panics(func() { yield("before panic") })
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Error("Expected panic but got none")
+				}
+			}()
+			yield("before panic")
+		}()
 		return ""
 	})
 
 	out, running := resume(0)
-	r.True(running)
-	r.Equal("before panic", out)
+	if !running {
+		t.Error("Expected coroutine to be running")
+	}
+	if out != "before panic" {
+		t.Errorf("Expected output to be 'before panic', got '%s'", out)
+	}
 
-	r.PanicsWithError("deferred error", cancel)
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("Expected panic but got none")
+			}
+			err, ok := r.(error)
+			if !ok {
+				t.Errorf("Expected error type from panic, got %T", r)
+			}
+			if err.Error() != "deferred error" {
+				t.Errorf("Expected panic message 'deferred error', got '%s'", err.Error())
+			}
+		}()
+		cancel()
+	}()
 }
 
 func TestDebugString(t *testing.T) {
-	r := require.New(t)
-
 	resume, _ := New(func(yield func(string) int, suspend func() int) string {
 		resume, cancel := New(func(yield func(string) int, suspend func() int) string {
 			panic("test panic")
@@ -405,10 +714,16 @@ func TestDebugString(t *testing.T) {
 
 	defer func() {
 		p := recover()
-		r.NotNil(p)
+		if p == nil {
+			t.Error("Expected panic but got none")
+			return
+		}
 
 		err, ok := p.(interface{ DebugString() string })
-		r.True(ok)
+		if !ok {
+			t.Errorf("Expected error with DebugString method, got %T", p)
+			return
+		}
 
 		msg := err.DebugString()
 
@@ -420,17 +735,28 @@ func TestDebugString(t *testing.T) {
 		for _, line := range strings.Split(msg, "\n") {
 			if strings.Contains(line, "coro_test.go:") {
 				matches := lineNumRegex.FindStringSubmatch(line)
-				r.Len(matches, 2)
+				if len(matches) != 2 {
+					t.Errorf("Expected 2 matches, got %d", len(matches))
+					continue
+				}
 
 				lineNum, err := strconv.Atoi(matches[1])
-				r.NoError(err)
+				if err != nil {
+					t.Errorf("Error converting line number: %v", err)
+					continue
+				}
 
 				lineNums = append(lineNums, lineNum)
 			}
 		}
 
-		r.Len(lineNums, 2)
-		r.Equal(3, lineNums[0]-lineNums[1])
+		if len(lineNums) != 2 {
+			t.Errorf("Expected 2 line numbers, got %d", len(lineNums))
+			return
+		}
+		if lineNums[0]-lineNums[1] != 3 {
+			t.Errorf("Expected line difference of 3, got %d", lineNums[0]-lineNums[1])
+		}
 	}()
 
 	resume(0)

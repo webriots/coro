@@ -3,9 +3,8 @@ package coro
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 // multiError implements unwrapping to multiple errors
@@ -36,8 +35,6 @@ func (s *selfReferentialError) Unwrap() error {
 }
 
 func TestDebugStringWithMultipleErrors(t *testing.T) {
-	r := require.New(t)
-
 	// Create an error that unwraps to multiple errors
 	innerErr1 := errors.New("inner error 1")
 	innerErr2 := errors.New("inner error 2")
@@ -51,15 +48,21 @@ func TestDebugStringWithMultipleErrors(t *testing.T) {
 
 	// Test DebugString
 	debugStr := pErr.DebugString()
-	r.Contains(debugStr, "multiple errors")
-	r.Contains(debugStr, "inner error 1")
-	r.Contains(debugStr, "inner error 2")
-	r.Contains(debugStr, "mock stack")
+	if !strings.Contains(debugStr, "multiple errors") {
+		t.Error("DebugString should contain 'multiple errors'")
+	}
+	if !strings.Contains(debugStr, "inner error 1") {
+		t.Error("DebugString should contain 'inner error 1'")
+	}
+	if !strings.Contains(debugStr, "inner error 2") {
+		t.Error("DebugString should contain 'inner error 2'")
+	}
+	if !strings.Contains(debugStr, "mock stack") {
+		t.Error("DebugString should contain 'mock stack'")
+	}
 }
 
 func TestDebugStringWithCircularReference(t *testing.T) {
-	r := require.New(t)
-
 	// Create an error with a circular reference
 	selfErr := &selfReferentialError{msg: "self error"}
 	selfErr.err = selfErr // circular reference
@@ -72,14 +75,16 @@ func TestDebugStringWithCircularReference(t *testing.T) {
 
 	// Test DebugString
 	debugStr := pErr.DebugString()
-	r.Contains(debugStr, "self error")
-	r.Contains(debugStr, "mock stack")
+	if !strings.Contains(debugStr, "self error") {
+		t.Error("DebugString should contain 'self error'")
+	}
+	if !strings.Contains(debugStr, "mock stack") {
+		t.Error("DebugString should contain 'mock stack'")
+	}
 	// Should not cause an infinite loop due to seen tracking
 }
 
 func TestPanicErrorUnwrapNonError(t *testing.T) {
-	r := require.New(t)
-
 	// Create a panicError with a non-error value
 	pErr := &panicError{
 		value: "not an error",
@@ -87,12 +92,12 @@ func TestPanicErrorUnwrapNonError(t *testing.T) {
 	}
 
 	// Test Unwrap returns nil for non-error values
-	r.Nil(pErr.Unwrap())
+	if pErr.Unwrap() != nil {
+		t.Error("Expected Unwrap to return nil for non-error values")
+	}
 }
 
 func TestPanicErrorMethods(t *testing.T) {
-	r := require.New(t)
-
 	// Test with error value
 	errValue := fmt.Errorf("test error")
 	pErr := &panicError{
@@ -100,8 +105,16 @@ func TestPanicErrorMethods(t *testing.T) {
 		stack: []byte("mock stack"),
 	}
 
-	r.Equal("test error", pErr.Error())
-	r.Contains(pErr.ErrorWithStack(), "test error")
-	r.Contains(pErr.ErrorWithStack(), "mock stack")
-	r.Equal(errValue, pErr.Unwrap())
+	if pErr.Error() != "test error" {
+		t.Errorf("Expected Error() to return 'test error', got '%s'", pErr.Error())
+	}
+	if !strings.Contains(pErr.ErrorWithStack(), "test error") {
+		t.Error("ErrorWithStack() should contain 'test error'")
+	}
+	if !strings.Contains(pErr.ErrorWithStack(), "mock stack") {
+		t.Error("ErrorWithStack() should contain 'mock stack'")
+	}
+	if pErr.Unwrap() != errValue {
+		t.Errorf("Expected Unwrap() to return original error, got %v", pErr.Unwrap())
+	}
 }
